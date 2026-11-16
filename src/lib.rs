@@ -50,6 +50,15 @@ impl<T> RingBuffer<T> {
         self.buf.push_back(value);
     }
 
+    /// The last `n` items, oldest first. Fewer than `n` items yields all of them.
+    /// (Named `latest_n` — `latest()` already returns `Option<&T>` and stays as-is.)
+    pub fn latest_n(&self, n: usize) -> Vec<T>
+    where
+        T: Clone,
+    {
+        self.buf.iter().rev().take(n).rev().cloned().collect()
+    }
+
     pub fn latest(&self) -> Option<&T> {
         self.buf.back()
     }
@@ -93,6 +102,29 @@ impl Ema {
 
     pub fn value(&self) -> Option<f64> {
         self.value
+    }
+
+    /// Forget all accumulated samples; the next `update` starts from scratch.
+    pub fn reset(&mut self) {
+        self.value = None;
+    }
+}
+
+/// Mean `(cpu_percent, ram_percent)` over the samples in the ring buffer.
+/// `None` when the buffer is empty.
+pub fn averages(samples: &RingBuffer<Sample>) -> Option<(f64, f64)> {
+    let mut cpu = 0.0f64;
+    let mut ram = 0.0f64;
+    let mut n = 0u64;
+    for s in samples.iter() {
+        cpu += s.cpu_percent;
+        ram += s.ram_percent;
+        n += 1;
+    }
+    if n == 0 {
+        None
+    } else {
+        Some((cpu / n as f64, ram / n as f64))
     }
 }
 
@@ -185,6 +217,41 @@ mod tests {
     fn ema_rejects_bad_alpha() {
         assert!(Ema::new(0.0).is_err());
         assert!(Ema::new(1.5).is_err());
+    }
+
+    #[test]
+    fn latest_n_returns_last_n_oldest_first() {
+        let mut rb = RingBuffer::new(10).unwrap();
+        assert_eq!(rb.latest_n(3), Vec::<i32>::new());
+        for i in 0..6 {
+            rb.push(i);
+        }
+        assert_eq!(rb.latest_n(3), vec![3, 4, 5]);
+        assert_eq!(rb.latest_n(99), vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(rb.latest_n(0), Vec::<i32>::new());
+    }
+
+    #[test]
+    fn ema_reset_starts_fresh() {
+        let mut ema = Ema::new(0.5).unwrap();
+        ema.update(100.0);
+        ema.update(0.0); // value = 50
+        assert_eq!(ema.value(), Some(50.0));
+        ema.reset();
+        assert_eq!(ema.value(), None);
+        assert_eq!(ema.update(10.0), 10.0); // first update primes the average
+    }
+
+    #[test]
+    fn averages_computes_cpu_and_ram_means() {
+        let mut rb = RingBuffer::new(10).unwrap();
+        assert_eq!(averages(&rb), None);
+        rb.push(sample(10.0, 50.0, 0));
+        rb.push(sample(20.0, 70.0, 1));
+        rb.push(sample(30.0, 90.0, 2));
+        let (cpu, ram) = averages(&rb).unwrap();
+        assert_eq!(cpu, 20.0);
+        assert_eq!(ram, 70.0);
     }
 
     #[test]
