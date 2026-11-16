@@ -1,0 +1,13 @@
+[package]
+name = "apppulse"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Local process/system metrics domain logic for Orbit: capped ring buffer, EMA smoothing, alert rules. No /proc parsing lives here."
+repository = "https://github.com/Can-5/apppulse"
+keywords = ["metrics", "process", "orbit"]
+categories = ["os"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
